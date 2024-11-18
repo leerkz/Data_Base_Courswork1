@@ -1,13 +1,15 @@
 import psycopg2
-from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT, connection
+from psycopg2.extensions import connection
 
 
-def create_database(db_name: str, user: str, password: str, host: str, port: str) -> None:
+def create_database(db_name: str, user: str, password: str, host: str, port: int) -> None:
     """Создает базу данных PostgreSQL с заданными параметрами подключения."""
     conn = psycopg2.connect(dbname="postgres", user=user, password=password, host=host, port=port)
-    conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+    conn.autocommit = True
     cur = conn.cursor()
-    cur.execute(f"CREATE DATABASE {db_name};")
+    cur.execute(f"SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = '{db_name}'")
+    if cur.fetchone():
+        cur.execute(f"CREATE DATABASE {db_name};")
     cur.close()
     conn.close()
 
@@ -41,3 +43,4 @@ def create_tables(conn: connection) -> None:
         """
         )
         conn.commit()
+        conn.close()

@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Optional, Tuple
 
 import psycopg2
 
@@ -6,22 +6,24 @@ import psycopg2
 class DBManager:
     """Класс для выполнения запросов к базе данных PostgreSQL по вакансиям и компаниям."""
 
-    def __init__(self, db_name: str, user: str, password: str, host: str, port: str) -> None:
+    def __init__(self, db_name: str, params: dict) -> None:
         """Инициализирует подключение к базе данных PostgreSQL."""
-        self.conn = psycopg2.connect(dbname=db_name, user=user, password=password, host=host, port=port)
+        self.db_name = db_name
+        self.params = params
+        self.conn = psycopg2.connect(dbname=db_name, **params)
 
-    def get_companies_and_vacancies_count(self) -> list[tuple[Any, ...]]:
+    def get_companies_and_vacancies_count(self) -> tuple[Any, ...] | None:
         """Возвращает список компаний и количество вакансий у каждой компании."""
-        with self.conn.cursor() as cur:
+        conn = psycopg2.connect(dbname=self.db_name, **self.params)
+        with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT c.name, COUNT(v.vacancy_id) AS vacancies_count
-                FROM companies c
-                LEFT JOIN vacancies v ON c.company_id = v.company_id
-                GROUP BY c.company_id;
+                SELECT name, COUNT(*) FROM vacancies
+                INNER JOIN companies ON companies.company_id = vacancies.company_id
+                GROUP BY name;
             """
             )
-            return cur.fetchall()
+            return cur.fetchone()
 
     def get_all_vacancies(self) -> list[tuple[Any, ...]]:
         """Возвращает список всех вакансий с информацией о компании, зарплате и ссылке на вакансию."""
@@ -53,12 +55,7 @@ class DBManager:
         with self.conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT v.title, c.name, v.salary_from, v.salary_to, v.currency, v.url
-                FROM vacancies v
-                JOIN companies c ON v.company_id = c.company_id
-                WHERE (v.salary_from + v.salary_to) / 2 > (
-                    SELECT AVG((salary_from + salary_to) / 2) FROM vacancies
-                );
+                SELECT * FROM vacancies WHERE salary_to > (SELECT AVG(salary_to) FROM vacancies)
             """
             )
             return cur.fetchall()
@@ -67,13 +64,9 @@ class DBManager:
         """Возвращает вакансии, содержащие заданное ключевое слово в названии."""
         with self.conn.cursor() as cur:
             cur.execute(
-                """
-                SELECT v.title, c.name, v.salary_from, v.salary_to, v.currency, v.url
-                FROM vacancies v
-                JOIN companies c ON v.company_id = c.company_id
-                WHERE v.title ILIKE %s;
-            """,
-                (f"%{keyword}%",),
+                f"""
+                SELECT * FROM vacancies WHERE title LIKE '%{keyword}%'
+            """
             )
             return cur.fetchall()
 
